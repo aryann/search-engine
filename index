@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+
+import abc
+import shelve
+
+
+class Index(object):
+
+    __meta__ = abc.ABCMeta
+
+    @abc.abstractproperty
+    def put(self, doc):
+        pass
+
+
+class NaiveIndex(Index):
+
+    def __init__(self, index_obj):
+        self._index = index_obj
+
+    def put(self, doc):
+        for name, value in doc['properties'].iteritems():
+            key = name + '.' + str(value)
+            existing_docs = self._index.get(key) or set()
+            existing_docs.add(doc['id'])
+            self._index[key] = existing_docs
+
+            min_key = name + '.min'
+            max_key = name + '.max'
+            self._index[min_key] = min(self._index.get(min_key, value), value)
+            self._index[max_key] = max(self._index.get(max_key, value), value)
+
+
+if __name__ == '__main__':
+    doc1 = {
+        'id': 1,
+        'properties': {
+            'x': 2,
+            'y': 100,
+         },
+    }
+
+    doc2 = {
+        'id': 2,
+        'properties': {
+            'x': 20,
+            'y': 102,
+         },
+    }
+
+    shelf = shelve.open('my_index')
+    index = NaiveIndex(shelf)
+    index.put(doc1)
+    index.put(doc2)
+    shelf.close()

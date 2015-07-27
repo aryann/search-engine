@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+
+import abc
+import collections
+import shelve
+
+
+SearchQuery = collections.namedtuple('SearchQuery', ['field', 'min', 'max'])
+
+
+class Searcher(object):
+
+    __meta__ = abc.ABCMeta
+
+    def __init__(self, index_obj):
+        self._index = index_obj
+
+    @abc.abstractproperty
+    def _get_query_plan(self, query):
+        pass
+
+    def search(self, query):
+        results = set()
+        for key in self._get_query_plan(query):
+            docs = self._index.get(key)
+            if docs:
+                results.update(docs)
+        return results
+
+
+class NaiveSearcher(Searcher):
+
+    def _get_query_plan(self, query):
+        min_key = query.field + '.min'
+        max_key = query.field + '.max'
+        min = self._index.get(min_key) if query.min is None else query.min
+        max = self._index.get(max_key) if query.max is None else query.max
+
+        if not min or not max:
+            raise ValueError(
+                'could not determine min or max for attribute: ' + query.field)
+
+        plan = []
+        for val in xrange(min, max + 1):
+            plan.append(query.field + '.' + str(val))
+        return plan
+
+
+if __name__ == '__main__':
+    shelf = shelve.open('my_index')
+    searcher = NaiveSearcher(shelf)
+    print searcher.search(SearchQuery('x', -10, 20))
