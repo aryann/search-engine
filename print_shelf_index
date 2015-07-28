@@ -7,4 +7,4 @@ import sys
 
 if __name__ == '__main__':
     shelf = shelve.open(sys.argv[1])
-    pprint.pprint(shelf, indent=2)
+    pprint.pprint(dict(shelf), indent=2)

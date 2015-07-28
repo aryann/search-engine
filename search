@@ -20,6 +20,15 @@ class Searcher(object):
         pass
 
     def search(self, query):
+        min_key = query.field + '.min'
+        max_key = query.field + '.max'
+        self._min = self._index.get(min_key) if query.min is None else query.min
+        self._max = self._index.get(max_key) if query.max is None else query.max
+
+        if not self._min or not self._max:
+            raise ValueError(
+                'could not determine min or max for attribute: ' + query.field)
+
         results = set()
         for key in self._get_query_plan(query):
             docs = self._index.get(key)
@@ -31,22 +40,61 @@ class Searcher(object):
 class NaiveSearcher(Searcher):
 
     def _get_query_plan(self, query):
-        min_key = query.field + '.min'
-        max_key = query.field + '.max'
-        min = self._index.get(min_key) if query.min is None else query.min
-        max = self._index.get(max_key) if query.max is None else query.max
-
-        if not min or not max:
-            raise ValueError(
-                'could not determine min or max for attribute: ' + query.field)
-
         plan = []
-        for val in xrange(min, max + 1):
+        for val in xrange(self._min, self._max + 1):
             plan.append(query.field + '.' + str(val))
+        return plan
+
+
+class LogarithmicSearcher(Searcher):
+
+    def _get_query_plan(self, query):
+        """Given SearchQuery('x', 18, 222), produces the following query plan:
+
+        ['x.18',
+         'x.19',
+         'x.20:29',
+         'x.30:39',
+         'x.40:49',
+         'x.50:59',
+         'x.60:69',
+         'x.70:79',
+         'x.80:89',
+         'x.90:99',
+         'x.100:199',
+         'x.200:209',
+         'x.210:219',
+         'x.220',
+         'x.221',
+        ]
+        """
+        plan = []
+
+        curr = self._min
+        increase_rate = 1
+
+        while curr < self._max:
+            if (curr % (increase_rate * 10) == 0 and
+                curr + increase_rate * 10 <= self._max):
+                increase_rate *= 10
+
+            elif curr + increase_rate > self._max:
+                increase_rate /= 10
+
+            else:
+                prefix = query.field + '.' + str(curr)
+                if increase_rate == 1:
+                    key = prefix
+                else:
+                    key = prefix + ':' + str(curr + increase_rate - 1)
+                plan.append(key)
+
+                curr = curr + increase_rate
+
         return plan
 
 
 if __name__ == '__main__':
     shelf = shelve.open('my_index')
-    searcher = NaiveSearcher(shelf)
-    print searcher.search(SearchQuery('x', -10, 20))
+    searcher = LogarithmicSearcher(shelf)
+    print searcher.search(SearchQuery('x', 18, 222))

@@ -8,27 +8,47 @@ class Index(object):
 
     __meta__ = abc.ABCMeta
 
+    def __init__(self, index_obj):
+        self._index = index_obj
+
     @abc.abstractproperty
     def put(self, doc):
         pass
 
+    def _put_value(self, key, doc):
+        existing_docs = self._index.get(key) or set()
+        existing_docs.add(doc['id'])
+        self._index[key] = existing_docs
+
+    def _record_min_max(self, name, value):
+        min_key = name + '.min'
+        max_key = name + '.max'
+        self._index[min_key] = min(self._index.get(min_key, value), value)
+        self._index[max_key] = max(self._index.get(max_key, value), value)
+
 
 class NaiveIndex(Index):
-
-    def __init__(self, index_obj):
-        self._index = index_obj
 
     def put(self, doc):
         for name, value in doc['properties'].iteritems():
             key = name + '.' + str(value)
-            existing_docs = self._index.get(key) or set()
-            existing_docs.add(doc['id'])
-            self._index[key] = existing_docs
+            self._put_value(key, doc)
+            self._record_min_max(name, value)
 
-            min_key = name + '.min'
-            max_key = name + '.max'
-            self._index[min_key] = min(self._index.get(min_key, value), value)
-            self._index[max_key] = max(self._index.get(max_key, value), value)
+
+class LogarithmicIndex(Index):
+
+    def put(self, doc):
+        for name, value in doc['properties'].iteritems():
+            self._record_min_max(name, value)
+            self._put_value(name + '.' + str(value), doc)
+
+            bucket = 1
+            while value != 0:
+                bucket *= 10
+                value = value / bucket * bucket
+                key = name + '.' + str(value) + ':' + str(value + bucket - 1)
+                self._put_value(key, doc)
 
 
 if __name__ == '__main__':
@@ -48,8 +68,17 @@ if __name__ == '__main__':
          },
     }
 
+    doc3 = {
+        'id': 3,
+        'properties': {
+            'x': 5199,
+            'y': 102,
+         },
+    }
+
     shelf = shelve.open('my_index')
-    index = NaiveIndex(shelf)
+    index = LogarithmicIndex(shelf)
     index.put(doc1)
     index.put(doc2)
+    index.put(doc3)
     shelf.close()
