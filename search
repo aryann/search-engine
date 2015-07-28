@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import abc
+import argparse
 import collections
 import shelve
 
@@ -25,13 +26,14 @@ class Searcher(object):
         self._min = self._index.get(min_key) if query.min is None else query.min
         self._max = self._index.get(max_key) if query.max is None else query.max
 
-        if not self._min or not self._max:
+        if self._min is None or self._max is None:
             raise ValueError(
                 'could not determine min or max for attribute: ' + query.field)
 
         results = set()
         for key in self._get_query_plan(query):
-            docs = self._index.get(key)
+            print results
+            docs = self._index.get(key, None)
             if docs:
                 results.update(docs)
         return results
@@ -91,10 +93,36 @@ class LogarithmicSearcher(Searcher):
 
                 curr = curr + increase_rate
 
+        print plan
         return plan
 
 
 if __name__ == '__main__':
-    shelf = shelve.open('my_index')
+    parser = argparse.ArgumentParser(
+        description='Performs a numeric range search over an index.')
+    parser.add_argument(
+        'index_file',
+        help='Path to a file to the index')
+    parser.add_argument(
+        '--index_type',
+        choices=['naive', 'logarithmic'],
+        default='logarithmic',
+        help='The index type.')
+    parser.add_argument(
+        'field',
+        help='The field to perform the range query on.')
+    parser.add_argument(
+        'min',
+        type=int,
+        help='The minimum value (inclusive).')
+    parser.add_argument(
+        'max',
+        type=int,
+        help='The maximum value (exlusive).')
+
+    args = parser.parse_args()
+    shelf = shelve.open(args.index_file)
+    searcher = (LogarithmicSearcher if args.index_type == 'logarithmic'
+               else NaiveSearcher)
     searcher = LogarithmicSearcher(shelf)
-    print searcher.search(SearchQuery('x', 18, 222))
+    print searcher.search(SearchQuery(args.field, args.min, args.max))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import abc
+import argparse
 import shelve
 
 
@@ -39,6 +40,9 @@ class NaiveIndex(Index):
 class LogarithmicIndex(Index):
 
     def put(self, doc):
+        # TODO: This is wrong. We need to use the min/max information
+        # in order to properly index all values.
+
         for name, value in doc['properties'].iteritems():
             self._record_min_max(name, value)
             self._put_value(name + '.' + str(value), doc)
@@ -76,8 +80,23 @@ if __name__ == '__main__':
          },
     }
 
-    shelf = shelve.open('my_index')
-    index = LogarithmicIndex(shelf)
+    parser = argparse.ArgumentParser(
+        description='Indexes one or more documents.')
+    parser.add_argument(
+        'index_file',
+        help=('Path to a file to save the index to. File is created if it '
+              'does not exist. Indexes can be modified later.'))
+    parser.add_argument(
+        '--strategy',
+        choices=['naive', 'logarithmic'],
+        default='logarithmic',
+        help='The indexing strategy to use.')
+
+    args = parser.parse_args()
+    shelf = shelve.open(args.index_file)
+    indexer = (LogarithmicIndex if args.strategy == 'logarithmic'
+               else NaiveIndex)
+    index = indexer(shelf)
     index.put(doc1)
     index.put(doc2)
     index.put(doc3)
